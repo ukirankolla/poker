@@ -256,7 +256,7 @@ def test_split_pot_when_players_tie(monkeypatch):
     assert players[1].chips == 100
 
 
-def test_odd_chip_remainder_split(monkeypatch):
+def test_short_all_in_creates_side_pot(monkeypatch):
     monkeypatch.setattr(
         "poker.game.Deck",
         lambda seed: FixedDeck(kkk_qq_deck(3)),
@@ -273,12 +273,40 @@ def test_odd_chip_remainder_split(monkeypatch):
     winners, _ = game.play_hand()
 
     assert len(winners) == 3
-    # Contributions are 8 + 10 + 10 = 28; divmod(28, 3) -> 9 remainder 1.
+    # Contributions are 8 + 10 + 10 = 28.
+    # Main pot is 8 * 3 = 24 split three ways; side pot is 2 * 2 = 4
+    # split between B and C only.
     assert game.pot == 28
-    assert players[0].chips == 10  # 0 + 10 (extra odd chip)
-    assert players[1].chips == 9
-    assert players[2].chips == 99  # 90 remaining + 9
+    assert players[0].chips == 8  # 0 + 8 (main pot share only)
+    assert players[1].chips == 10  # 0 + 8 (main) + 2 (side)
+    assert players[2].chips == 100  # 90 + 8 (main) + 2 (side)
     assert sum(player.chips for player in players) == 118
+
+
+def test_odd_chip_goes_to_earliest_winner(monkeypatch):
+    monkeypatch.setattr(
+        "poker.game.Deck",
+        lambda seed: FixedDeck(kkk_qq_deck(3)),
+    )
+
+    players = [
+        Player("A", ScriptedAgent(["call", "check", "check", "check"]), chips=100),  # button
+        Player("B", ScriptedAgent(["fold"]), chips=100),  # small blind
+        Player("C", CheckCallAgent(), chips=100),  # big blind
+    ]
+
+    game = HoldemGame(players, seed=1)
+
+    winners, _ = game.play_hand()
+
+    assert len(winners) == 2
+    # A and C tie on KKKQQ; B folds after posting the small blind 5.
+    # Pot is 10 + 5 + 10 = 25; divmod(25, 2) -> 12 remainder 1.
+    assert game.pot == 25
+    assert players[0].chips == 103  # 90 + 12 + odd chip
+    assert players[1].chips == 95  # folded away the small blind
+    assert players[2].chips == 102  # 90 + 12
+    assert sum(player.chips for player in players) == 300
 
 
 # ----------------------------------------------------------------------
@@ -451,6 +479,75 @@ def test_complete_hand_lifecycle():
         # State is reset for the next hand.
         assert all(not player.folded for player in players)
         assert all(player.current_bet == 0 for player in players)
+
+
+def test_four_player_hand_lifecycle():
+    players = [
+        Player(name, CheckCallAgent(), chips=100)
+        for name in ("A", "B", "C", "D")
+    ]
+
+    game = HoldemGame(players, seed=1)
+
+    total = sum(player.chips for player in players)
+
+    for hand in range(3):
+        winners, _ = game.play_hand()
+
+        assert winners
+        assert game.button_index == hand % 4
+        assert game.pot == 40  # every player calls the big blind
+        assert len(game.community) == 5
+        assert sum(player.chips for player in players) == total
+        assert all(not player.folded for player in players)
+
+
+def test_fold_after_raise():
+    players = [
+        Player(
+            "A",
+            ScriptedAgent(["raise", "fold"]),
+            chips=100,
+        ),  # button
+        Player("B", CheckCallAgent(), chips=100),  # small blind
+        Player("C", CheckCallAgent(), chips=100),  # big blind
+    ]
+
+    game = HoldemGame(players, seed=1)
+
+    winners, _ = game.play_hand()
+
+    # A raises preflop to 20, then folds on the flop.
+    assert players[0].folded
+    assert game.pot == 60  # 20 from each player preflop
+    assert players[0].chips == 80
+    assert sum(player.chips for player in players) == 300
+    assert {winner.name for winner in winners} <= {"B", "C"}
+    assert len(game.community) == 5
+
+
+def test_bet_then_call():
+    players = [
+        Player(
+            "A",
+            ScriptedAgent(["raise", "check", "check", "check"]),
+            chips=100,
+        ),  # button, posts the small blind
+        Player("B", CheckCallAgent(), chips=100),  # big blind
+    ]
+
+    game = HoldemGame(players, seed=1)
+
+    game.play_hand()
+
+    # A raises preflop to 20, B calls to match; the pot is 40.
+    assert game.pot == 40
+    assert sorted(player.chips for player in players) == [80, 120]
+    assert sum(player.chips for player in players) == 200
+
+    actions = [entry["action"] for entry in game.action_history]
+    assert "raise" in actions
+    assert "call" in actions
 
 
 # ----------------------------------------------------------------------

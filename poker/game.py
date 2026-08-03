@@ -10,16 +10,17 @@ class HoldemGame:
     """Drives one complete Texas Hold'em hand.
 
     Flow: post blinds -> preflop betting -> flop -> turn -> river ->
-    showdown, then award the pot to the best hand(s).
+    showdown, then award the main pot and any side pots to the best
+    eligible hand(s) per pot.
 
     The dealer button rotates after every hand. Heads-up rules apply
     when exactly two players are seated: the button posts the small
     blind and acts first preflop, while the big blind acts first on
     every later street.
 
-    Limitation: side pots for short all-in players are not
-    implemented. A showdown winner takes the entire pot even if
-    another player went all-in for less than the current bet.
+    When a player goes all-in for less than the current bet, the
+    matched money forms the main pot and the excess forms one or more
+    side pots that only the larger contributors can win.
     """
 
     def __init__(self, players, seed=None, small_blind=5, big_blind=10):
@@ -273,44 +274,71 @@ class HoldemGame:
 
         return None
 
-    def _award_pot(self, winners):
-        pot = self._engine.state.pot
-        share, remainder = divmod(pot, len(winners))
+    def _award_slice(self, amount, winners):
+        share, remainder = divmod(amount, len(winners))
 
         for position, (player, betting_player) in enumerate(winners):
-            amount = share + (1 if position < remainder else 0)
-            player.chips += amount
+            player.chips += share + (1 if position < remainder else 0)
             betting_player.stack = player.chips
 
+    def _award_pot(self, winners):
+        pot = self._engine.state.pot
+        self._award_slice(pot, winners)
         self.pot = pot
 
     def _showdown(self, verbose=False):
-        results = []
+        main_winners = None
+        best = None
 
-        for index, betting_player in enumerate(self._betting_players):
-            if betting_player.folded:
+        for amount, eligible in self._engine.state.compute_pots():
+            if not eligible:
                 continue
 
-            player = self.players[index]
-            score = evaluate(player.hole_cards + self.community)
-            results.append((score, player, betting_player))
+            results = []
 
-        best = max(score for score, _, _ in results)
-        winners = [
-            (player, betting_player)
-            for score, player, betting_player in results
-            if score == best
-        ]
+            for betting_player in eligible:
+                index = self._betting_index(betting_player)
+                player = self.players[index]
+                score = evaluate(player.hole_cards + self.community)
+                results.append((score, player, betting_player))
 
-        self._award_pot(winners)
+            slice_best = max(score for score, _, _ in results)
+            winners = [
+                (player, betting_player)
+                for score, player, betting_player in results
+                if score == slice_best
+            ]
+
+            self._award_slice(amount, winners)
+
+            if main_winners is None:
+                main_winners = [player for player, _ in winners]
+                best = slice_best
+
+        if main_winners is None:
+            # No money was committed to the pot (every player was busted
+            # or checked through with a zero blind). The best remaining
+            # hand is still the winner, of an empty pot.
+            results = []
+
+            for index, betting_player in enumerate(self._betting_players):
+                if betting_player.folded:
+                    continue
+                player = self.players[index]
+                score = evaluate(player.hole_cards + self.community)
+                results.append((score, player))
+
+            best = max(score for score, _ in results)
+            main_winners = [
+                player for score, player in results if score == best
+            ]
+
+        self.pot = self._engine.state.pot
 
         if verbose:
-            self._print_summary(
-                [player for player, _ in winners],
-                best=best,
-            )
+            self._print_summary(main_winners, best=best)
 
-        return [player for player, _ in winners], best
+        return main_winners, best
 
     def _finish_without_showdown(self, betting_player, verbose=False):
         index = self._betting_index(betting_player)
