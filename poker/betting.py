@@ -20,6 +20,7 @@ class BettingPlayer:
     folded: bool = False
     all_in: bool = False
     contribution: int = 0
+    total_contribution: int = 0
 
     def commit(self, amount: int) -> int:
         if amount < 0:
@@ -28,6 +29,7 @@ class BettingPlayer:
         actual = min(amount, self.stack)
         self.stack -= actual
         self.contribution += actual
+        self.total_contribution += actual
 
         if self.stack == 0:
             self.all_in = True
@@ -56,6 +58,45 @@ class BettingState:
         actual = player.commit(amount)
         self.pot += actual
         return actual
+
+    def compute_pots(self) -> list[tuple[int, list[BettingPlayer]]]:
+        """Split committed money into the main pot and side pots.
+
+        Contributions are cut at each unique contribution level. Every
+        player who put in at least that level contributes to the slice,
+        but only non-folded players who did so are eligible to win it.
+        A slice that only one player is eligible for is returned as is;
+        that player is uncontested for it. Slices are ordered from the
+        main pot outward.
+        """
+        levels = sorted(
+            {
+                player.total_contribution
+                for player in self.players
+                if player.total_contribution > 0
+            }
+        )
+
+        pots = []
+        previous = 0
+
+        for level in levels:
+            contributors = [
+                player
+                for player in self.players
+                if player.total_contribution >= level
+            ]
+            eligible = [
+                player
+                for player in contributors
+                if not player.folded
+            ]
+
+            amount = (level - previous) * len(contributors)
+            pots.append((amount, eligible))
+            previous = level
+
+        return pots
 
 
 class BettingEngine:
