@@ -118,12 +118,14 @@ class BettingRound:
 
         current_bet = self.engine.state.current_bet
 
-        # Everyone who can act must have acted and matched the bet.
+        # Everyone who can act must have acted and covered the current
+        # bet. `>=` is required because a busted big blind can leave the
+        # current bet below what a player has already contributed.
         for index, player in actionable_players:
             if not self.acted[index]:
                 return False
 
-            if player.contribution != current_bet:
+            if player.contribution < current_bet:
                 return False
 
         return True

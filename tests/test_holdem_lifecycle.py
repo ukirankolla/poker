@@ -408,6 +408,24 @@ def test_ollama_agent_plays_in_game(monkeypatch):
 # ----------------------------------------------------------------------
 
 
+def test_busted_big_blind_round_completes():
+    """A busted big blind leaves current_bet below the small blind's
+    contribution; the betting round must still terminate."""
+    players = [
+        Player("A", CheckCallAgent(), chips=100),
+        Player("B", CheckCallAgent(), chips=100),
+        Player("C", CheckCallAgent(), chips=0),  # busted big blind
+    ]
+
+    game = HoldemGame(players, seed=1)
+
+    winners, _ = game.play_hand()
+
+    assert winners
+    assert game.pot == 5  # only the small blind was posted
+    assert sum(player.chips for player in players) == 200
+
+
 def test_complete_hand_lifecycle():
     players = [
         Player("A", CheckCallAgent(), chips=100),
