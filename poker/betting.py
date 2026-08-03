@@ -70,10 +70,24 @@ class BettingEngine:
         if minimum_bet <= 0:
             raise ValueError("minimum_bet must be positive")
 
+        self.minimum_bet = minimum_bet
         self.state = BettingState(
             players=players,
             minimum_raise=minimum_bet,
         )
+
+    def reset_street(self):
+        """Reset per-street betting state while preserving the pot.
+
+        Contributions, the current bet, and the minimum raise are
+        cleared so the next street starts fresh. The accumulated pot
+        is kept.
+        """
+        for player in self.state.players:
+            player.contribution = 0
+
+        self.state.current_bet = 0
+        self.state.minimum_raise = self.minimum_bet
 
     def fold(self, player: BettingPlayer) -> None:
         self._validate_player(player)
