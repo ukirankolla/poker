@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   # ── Stage 1: build verification ──────────────────────────────────────
   build:
@@ -64,7 +68,7 @@ jobs:
         if: always()
         with:
           report_paths: reports/unit.xml
-          check_name: "Unit Tests (Python ${{ matrix.python-version }})"
+          check_name: "JUnit Unit Tests (Python ${{ matrix.python-version }})"
 
   # ── Stage 2: integration tests ───────────────────────────────────────
   integration-tests:
@@ -90,7 +94,7 @@ jobs:
         if: always()
         with:
           report_paths: reports/integration.xml
-          check_name: Integration Tests
+          check_name: "JUnit Integration Tests"
 
   # ── Stage 2: regression tests ────────────────────────────────────────
   regression-tests:
@@ -116,7 +120,7 @@ jobs:
         if: always()
         with:
           report_paths: reports/regression.xml
-          check_name: Regression Tests
+          check_name: "JUnit Regression Tests"
 
   # ── Stage 3: code coverage ───────────────────────────────────────────
   coverage:
