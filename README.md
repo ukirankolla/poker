@@ -22,7 +22,8 @@ self-play.
 - FastAPI web UI for benchmarks, tournaments, and single-hand play
 - Benchmark, self-play, and training simulation tooling
 - GitHub Actions CI (Python 3.11/3.12)
-- Jenkins CI/CD pipeline (build, unit/integration/regression tests, coverage gates, Docker image build/push/deploy)
+- GitHub Actions CI/CD (build, unit/integration/regression tests, coverage gates, Docker build/push, deploy)
+- Jenkins CI/CD pipeline (alternative, same stages)
 - Dockerfile + docker-compose.yml for containerized deployment
 - Pytest test suite
 
@@ -142,6 +143,36 @@ The same pipeline includes three CD stages that activate on merges to `main`:
 - **Docker Push** - pushes the image to GitHub Container Registry
   (`ghcr.io/ukirankolla/poker`); requires a `ghcr-token` Jenkins credential
 - **Deploy** - SSHes to the target host and runs `docker compose pull && docker compose up -d`
+
+## GitHub Actions CI/CD
+
+GitHub Actions is the primary CI/CD for this repository and runs automatically
+on every pull request. The `main` branch is protected: **all checks below must
+pass before a PR can merge.**
+
+**Pipeline (each job is a required status check):**
+
+| Stage | Job | Runs when |
+|---|---|---|
+| Build | `Build Pass` (compile + import smoke test) | every PR + main |
+| Unit | `Unit Tests (Python 3.11/3.12)` | every PR + main |
+| Integration | `Integration Tests` | every PR + main |
+| Regression | `Regression Tests` | every PR + main |
+| Coverage | `Code Coverage` (pytest-cov ~90%, Codecov report) | every PR + main |
+| Docker | `Docker Build` (build + validate container, push to GHCR) | every PR + main (push on main only) |
+| Deploy | `Deploy` (SSH + docker compose up) | main only |
+
+**Repository secrets needed for the CD stages:**
+
+| Secret | Purpose |
+|---|---|
+| `DEPLOY_HOST` | Target server hostname/IP |
+| `DEPLOY_USER` | SSH username on the target server |
+| `DEPLOY_SSH_KEY` | SSH private key with access to the target server |
+
+On merge to `main`, the pipeline builds and validates the Docker image, pushes
+it to GitHub Container Registry as `ghcr.io/ukirankolla/poker:latest`, then
+SSHs to the deploy host and runs `docker compose pull && docker compose up -d`.
 
 ## Docker
 
