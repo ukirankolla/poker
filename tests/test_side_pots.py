@@ -227,6 +227,7 @@ def test_showdown_with_zero_contribution_returns_winner():
     assert sum(player.chips for player in players) == 0
 
 
+@pytest.mark.regression
 def test_side_pot_chips_are_conserved():
     players = [
         Player("A", AllInAgent(), chips=7),

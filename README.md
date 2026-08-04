@@ -22,6 +22,9 @@ self-play.
 - FastAPI web UI for benchmarks, tournaments, and single-hand play
 - Benchmark, self-play, and training simulation tooling
 - GitHub Actions CI (Python 3.11/3.12)
+- GitHub Actions CI/CD (build, unit/integration/regression tests, coverage gates, Docker build/push, deploy)
+- Jenkins CI/CD pipeline (alternative, same stages)
+- Dockerfile + docker-compose.yml for containerized deployment
 - Pytest test suite
 
 ## Setup
@@ -107,6 +110,95 @@ Make sure Ollama is running, then use `OllamaAgent`. The default model is
 models (e.g. `qwen3.5*`) ignore the `think:false` override and are not
 recommended, because they burn latency on hidden reasoning and can return empty
 decisions.
+
+## Jenkins CI
+
+A declarative `Jenkinsfile` at the repo root runs the pipeline in a
+`python:3.12` Docker container. Each stage turns green with a checkmark on
+success:
+
+- **Build Pass** - installs dependencies, byte-compiles all modules, and
+  smoke-imports the engine, agents, simulations, and web app
+- **Unit Tests** - core engine and agent tests (`pytest -m "not integration
+  and not regression"`)
+- **Integration Tests** - multi-component tests across agents, benchmarks,
+  tournaments, self-play, training, and the web API (`pytest -m integration`)
+- **Regression Tests** - guards for previously fixed bugs such as chip
+  conservation (`pytest -m regression`)
+- **Code Coverage** - full suite under `pytest-cov` (currently ~90%), gated at
+  85% line / 85% class / 70% method coverage
+- **Publish Reports** - `junit` test-result trend, Cobertura coverage badge,
+  and an archived HTML coverage report
+
+Required plugins: JUnit, Cobertura, HTML Publisher, Timestamper. On an
+existing Jenkins, create a Pipeline job pointing at this repository (branch
+source) and Jenkins picks up the `Jenkinsfile` automatically.
+
+### Continuous Deployment (CD)
+
+The same pipeline includes three CD stages that activate on merges to `main`:
+
+- **Docker Build** - builds a production image tagged with the build number and
+  `latest`, using the `Dockerfile` at the repo root
+- **Docker Push** - pushes the image to GitHub Container Registry
+  (`ghcr.io/ukirankolla/poker`); requires a `ghcr-token` Jenkins credential
+- **Deploy** - SSHes to the target host and runs `docker compose pull && docker compose up -d`
+
+## GitHub Actions CI/CD
+
+GitHub Actions is the primary CI/CD for this repository and runs automatically
+on every pull request. The `main` branch is protected: **all checks below must
+pass before a PR can merge.**
+
+**Pipeline (each job is a required status check):**
+
+| Stage | Job | Runs when |
+|---|---|---|
+| Build | `Build Pass` (compile + import smoke test) | every PR + main |
+| Unit | `Unit Tests (Python 3.11/3.12)` | every PR + main |
+| Integration | `Integration Tests` | every PR + main |
+| Regression | `Regression Tests` | every PR + main |
+| Coverage | `Code Coverage` (pytest-cov ~90%, Codecov report) | every PR + main |
+| Docker | `Docker Build` (build + validate container, push to GHCR) | every PR + main (push on main only) |
+| Deploy | `Deploy` (SSH + docker compose up) | main only |
+
+**Repository secrets needed for the CD stages:**
+
+| Secret | Purpose |
+|---|---|
+| `DEPLOY_HOST` | Target server hostname/IP |
+| `DEPLOY_USER` | SSH username on the target server |
+| `DEPLOY_SSH_KEY` | SSH private key with access to the target server |
+
+On merge to `main`, the pipeline builds and validates the Docker image, pushes
+it to GitHub Container Registry as `ghcr.io/ukirankolla/poker:latest`, then
+SSHs to the deploy host and runs `docker compose pull && docker compose up -d`.
+
+## Docker
+
+Build and run locally:
+
+```powershell
+docker build -t ai-poker .
+docker run -p 8000:8000 ai-poker
+```
+
+Or with Docker Compose:
+
+```powershell
+docker compose up --build
+```
+
+Then open http://127.0.0.1:8000/. The image is ~120 MB (`python:3.12-slim`
+base), includes only runtime dependencies, and excludes tests and dev files
+via `.dockerignore`.
+
+To pull a pre-built image from GHCR:
+
+```powershell
+docker pull ghcr.io/ukirankolla/poker:latest
+docker run -p 8000:8000 ghcr.io/ukirankolla/poker:latest
+```
 
 ## Architecture
 

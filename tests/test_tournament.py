@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from agents.random_agent import RandomAgent
 from agents.rule_based_agent import RuleBasedAgent
 from poker.player import Player
@@ -19,6 +21,7 @@ def make_players(count):
     return players
 
 
+@pytest.mark.regression
 def test_single_table_tournament_conserves_chips():
     players = make_players(4)
     total = len(players) * 1000
