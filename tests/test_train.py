@@ -3,6 +3,8 @@ import random
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from agents.base_agent import DecisionContext
 from agents.learned_agent import LearnedPolicyAgent
 from agents.random_agent import RandomAgent

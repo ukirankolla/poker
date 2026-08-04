@@ -282,6 +282,7 @@ def test_short_all_in_creates_side_pot(monkeypatch):
     assert sum(player.chips for player in players) == 118
 
 
+@pytest.mark.regression
 def test_folded_extra_bet_does_not_destroy_chips():
     """A player who over-commits and then folds must not vaporize the
     unmatched slice of the pot. Folded money reverts to the main pot

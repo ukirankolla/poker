@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from agents.ollama_agent import OllamaAgent
 from agents.random_agent import RandomAgent
 from agents.rule_based_agent import RuleBasedAgent
@@ -28,6 +30,7 @@ def test_run_hands_is_deterministic():
     ]
 
 
+@pytest.mark.regression
 def test_run_hands_conserves_chips():
     result = run_hands(make_agents(3), hands=100, seed=1)
 

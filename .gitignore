@@ -9,3 +9,8 @@ dist/
 build/
 *.egg-info/
 .idea/
+reports/
+.coverage
+coverage.xml
+htmlcov/
+*.policy.json

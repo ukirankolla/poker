@@ -22,6 +22,7 @@ self-play.
 - FastAPI web UI for benchmarks, tournaments, and single-hand play
 - Benchmark, self-play, and training simulation tooling
 - GitHub Actions CI (Python 3.11/3.12)
+- Jenkins CI pipeline (build pass, unit/integration/regression tests, coverage gates)
 - Pytest test suite
 
 ## Setup
@@ -107,6 +108,29 @@ Make sure Ollama is running, then use `OllamaAgent`. The default model is
 models (e.g. `qwen3.5*`) ignore the `think:false` override and are not
 recommended, because they burn latency on hidden reasoning and can return empty
 decisions.
+
+## Jenkins CI
+
+A declarative `Jenkinsfile` at the repo root runs the pipeline in a
+`python:3.12` Docker container. Each stage turns green with a checkmark on
+success:
+
+- **Build Pass** - installs dependencies, byte-compiles all modules, and
+  smoke-imports the engine, agents, simulations, and web app
+- **Unit Tests** - core engine and agent tests (`pytest -m "not integration
+  and not regression"`)
+- **Integration Tests** - multi-component tests across agents, benchmarks,
+  tournaments, self-play, training, and the web API (`pytest -m integration`)
+- **Regression Tests** - guards for previously fixed bugs such as chip
+  conservation (`pytest -m regression`)
+- **Code Coverage** - full suite under `pytest-cov` (currently ~90%), gated at
+  85% line / 85% class / 70% method coverage
+- **Publish Reports** - `junit` test-result trend, Cobertura coverage badge,
+  and an archived HTML coverage report
+
+Required plugins: JUnit, Cobertura, HTML Publisher, Timestamper. On an
+existing Jenkins, create a Pipeline job pointing at this repository (branch
+source) and Jenkins picks up the `Jenkinsfile` automatically.
 
 ## Architecture
 

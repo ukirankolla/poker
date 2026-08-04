@@ -2,6 +2,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from agents.random_agent import RandomAgent
 from agents.rule_based_agent import RuleBasedAgent
 from simulation.self_play import (
