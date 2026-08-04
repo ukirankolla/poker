@@ -276,4 +276,10 @@ def test_ollama_agent_prompt_includes_equity_and_opponent_stats(
     assert "pot_odds" in user_content
     assert user_content["to_call"] == 20
     assert "opponent_statistics" in user_content
+    assert user_content["street"] == "flop"
+
+    system_content = payload["messages"][0]["content"]
+    assert "pot_odds" in system_content
+    assert "position" in system_content
+    assert "short stack" in system_content
     assert user_content["opponent_statistics"]["Opponent"]["vpip"] == 0.6

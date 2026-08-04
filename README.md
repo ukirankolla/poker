@@ -1,6 +1,8 @@
 # AI Poker
 
-A Python Texas Hold'em project designed to experiment with local AI poker agents.
+A Python Texas Hold'em project designed to experiment with local AI poker agents:
+rule-based play, a local LLM agent, and a self-trained policy that learns from
+self-play.
 
 ## Current MVP
 
@@ -10,10 +12,16 @@ A Python Texas Hold'em project designed to experiment with local AI poker agents
 - Player/game model with blinds, side pots, and action validation
 - Random agent
 - Rule-based agent with Monte Carlo equity estimation and pot-odds play
-- Ollama local-LLM agent (equity, pot odds, and opponent stats in the prompt)
-- Opponent statistics tracker (VPIP/PFR/3-bet/fold-to-3-bet/aggression)
+- Ollama local-LLM agent (street, equity, pot odds, and opponent stats in the
+  prompt, with explicit strategy rules)
+- Learned agent driven by a softmax policy trained on self-play decisions
+- Opponent statistics tracker (VPIP/PFR/3-bet/fold-to-3-bet/aggression) with
+  JSON persistence across runs
 - Multi-table tournament engine with rising blinds and eliminations
-- Benchmark and self-play simulation tooling
+- Self-play decision logging and policy training pipeline
+- FastAPI web UI for benchmarks, tournaments, and single-hand play
+- Benchmark, self-play, and training simulation tooling
+- GitHub Actions CI (Python 3.11/3.12)
 - Pytest test suite
 
 ## Setup
@@ -44,11 +52,47 @@ Head-to-head / multi-agent benchmark (cash-game style with rebuys):
 python -m simulation.benchmark --hands 200 --agents random,rulebased --show-stats
 ```
 
-Full tournament with rising blinds, eliminations, and a final table:
+Persist and reuse opponent statistics across benchmark runs:
+
+```powershell
+python -m simulation.benchmark --hands 200 --agents random,rulebased --stats-file stats.json --show-stats
+python -m simulation.benchmark --hands 200 --agents random,rulebased --stats-file stats.json --show-stats
+```
+
+Full tournament with rising blinds, eliminations, and a final table (also
+supports `--stats-file` to carry opponent profiles in):
 
 ```powershell
 python -m simulation.tournament --players 20 --seed 42
 ```
+
+## Self-play learning
+
+Log decisions from a self-play session, train a softmax policy, then benchmark
+the learned agent:
+
+```powershell
+python -m simulation.self_play --hands 200 --agents random,rulebased --output decisions.jsonl
+python -m simulation.train decisions.jsonl --epochs 30 --output policy.json
+python -m simulation.benchmark --hands 200 --agents learned,random --policy policy.json --show-stats
+```
+
+The trained policy is a pure-Python softmax logistic model over normalized
+hand-strength, pot-odds, bet, and position features, so no external ML
+dependencies are needed.
+
+## Web UI
+
+Start the FastAPI app:
+
+```powershell
+uvicorn web.app:app --reload
+```
+
+Then open http://127.0.0.1:8000/ for a page that can run benchmarks and
+tournaments and play a single hand against an agent. The API also exposes
+`POST /api/benchmark`, `POST /api/tournament`, and `POST /api/hand`, returning
+400 for unknown agents.
 
 ## Local AI with Ollama
 
@@ -64,6 +108,16 @@ models (e.g. `qwen3.5*`) ignore the `think:false` override and are not
 recommended, because they burn latency on hidden reasoning and can return empty
 decisions.
 
+## Architecture
+
+```
+poker/          game rules, hand evaluation, equity, statistics
+agents/         random, rule-based, ollama (LLM), learned (policy)
+simulation/     benchmark, tournament, self-play logging, policy training
+web/            FastAPI app and HTML page
+tests/          pytest suite (game, agents, statistics, simulations, training, web)
+```
+
 ## Roadmap
 
 - [x] Complete legal betting rounds and blinds
@@ -72,6 +126,7 @@ decisions.
 - [x] Add Monte Carlo equity estimation
 - [x] Add stronger local LLM decision prompts
 - [x] Add self-play and agent evaluation (benchmark + tournament)
-- [ ] Add self-play data pipeline (hand/decision logging for training)
-- [ ] Add FastAPI/game UI
-- [ ] Add GitHub Actions CI
+- [x] Add self-play data pipeline (hand/decision logging for training)
+- [x] Add a trained learned agent and persistent opponent profiles
+- [x] Add FastAPI/game UI
+- [x] Add GitHub Actions CI

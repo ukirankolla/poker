@@ -115,7 +115,13 @@ def _merge_into_final_table(tables):
 
 
 def _play_table_hand(
-    table, table_index, hand_index, small_blind, big_blind, seed
+    table,
+    table_index,
+    hand_index,
+    small_blind,
+    big_blind,
+    seed,
+    statistics=None,
 ):
     players = _alive(table)
 
@@ -129,6 +135,7 @@ def _play_table_hand(
         seed=seed + hand_index * 100 + table_index,
         small_blind=small_blind,
         big_blind=big_blind,
+        statistics=statistics,
     )
     game.button_index = (button - 1) % len(players)
     winners, score = game.play_hand()
@@ -157,12 +164,15 @@ def _payouts(config, standings):
     return payouts
 
 
-def run_tournament(players, config=None):
+def run_tournament(players, config=None, statistics=None):
     """Run a full tournament and return the result.
 
     ``players`` are reset to the starting stack and eliminated players
     never come back. Standings list the elimination order, with the
     champion (last remaining player) at the end.
+
+    Pass an existing ``statistics`` tracker to carry opponent profiles
+    over from other runs.
     """
     if len(players) < 2:
         raise ValueError("at least two players are required")
@@ -201,6 +211,7 @@ def run_tournament(players, config=None):
                 small_blind,
                 big_blind,
                 config.seed,
+                statistics=statistics,
             )
 
         hand_index += 1
@@ -276,6 +287,14 @@ def main(argv=None):
     parser.add_argument("--hands-per-level", type=int, default=20)
     parser.add_argument("--players-per-table", type=int, default=9)
     parser.add_argument("--prize-pool", type=int, default=None)
+    parser.add_argument(
+        "--stats-file",
+        default=None,
+        help=(
+            "JSON file that persists per-opponent statistics across runs; "
+            "loaded before and saved after the tournament"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.players < 2:
@@ -292,6 +311,16 @@ def main(argv=None):
         base = type(agent).__name__.replace("Agent", "")
         players.append(Player(f"{base}{index}", agent))
 
+    statistics = None
+
+    if args.stats_file:
+        from poker.statistics import StatisticsTracker
+
+        try:
+            statistics = StatisticsTracker.load(args.stats_file)
+        except (FileNotFoundError, ValueError, TypeError):
+            statistics = StatisticsTracker()
+
     result = run_tournament(
         players,
         TournamentConfig(
@@ -301,7 +330,11 @@ def main(argv=None):
             prize_pool=args.prize_pool,
             seed=args.seed,
         ),
+        statistics=statistics,
     )
+
+    if args.stats_file:
+        statistics.save(args.stats_file)
 
     print_result(result)
     print(
