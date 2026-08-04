@@ -21,8 +21,9 @@ self-play.
 - Self-play decision logging and policy training pipeline
 - FastAPI web UI for benchmarks, tournaments, and single-hand play
 - Benchmark, self-play, and training simulation tooling
-- GitHub Actions CI (Python 3.11/3.12)
-- GitHub Actions CI/CD (build, unit/integration/regression tests, coverage gates, Docker build/push, deploy)
+- GitHub Actions Continuous Integration (build, unit/integration/regression tests)
+- GitHub Actions Code Coverage + Docker Build pipelines
+- GitHub Actions Continuous Deployment (SSH deploy on merge to main)
 - Jenkins CI/CD pipeline (alternative, same stages)
 - Dockerfile + docker-compose.yml for containerized deployment
 - Pytest test suite
@@ -147,22 +148,40 @@ The same pipeline includes three CD stages that activate on merges to `main`:
 ## GitHub Actions CI/CD
 
 GitHub Actions is the primary CI/CD for this repository and runs automatically
-on every pull request. The `main` branch is protected: **all checks below must
-pass before a PR can merge.**
+on every pull request. The `main` branch is protected: **all required checks
+below must pass before a PR can merge.**
 
-**Pipeline (each job is a required status check):**
+Four pipelines keep the check labels distinct and professional:
 
-| Stage | Job | Runs when |
+**Continuous Integration** (`.github/workflows/ci.yml`) — every PR + main:
+
+| Stage | Check name | What it does |
 |---|---|---|
-| Build | `Build Pass` (compile + import smoke test) | every PR + main |
-| Unit | `Unit Tests (Python 3.11/3.12)` | every PR + main |
-| Integration | `Integration Tests` | every PR + main |
-| Regression | `Regression Tests` | every PR + main |
-| Coverage | `Code Coverage` (pytest-cov ~90%, Codecov report) | every PR + main |
-| Docker | `Docker Build` (build + validate container, push to GHCR) | every PR + main (push on main only) |
-| Deploy | `Deploy` (SSH + docker compose up) | main only |
+| Build | `Continuous Integration / Build Pass` | compile + import smoke test |
+| Unit | `Continuous Integration / Unit Tests (Python 3.11/3.12)` | unit suite on both Pythons |
+| Integration | `Continuous Integration / Integration Tests` | learned agent, self-play, training |
+| Regression | `Continuous Integration / Regression Tests` | chips-conservation invariants |
 
-**Repository secrets needed for the CD stages:**
+**Code Coverage** (`.github/workflows/coverage.yml`) — every PR + main:
+
+| Check name | What it does |
+|---|---|
+| `Code Coverage / Report` | pytest-cov ~90%, Codecov report, HTML artifact |
+
+**Docker Build** (`.github/workflows/docker.yml`) — every PR + main:
+
+| Check name | What it does |
+|---|---|
+| `Docker Build / Build Image` | build + validate container; push to GHCR on main |
+
+**Continuous Deployment** (`.github/workflows/cd.yml`) — after CI succeeds on
+`main` only:
+
+| Check name | What it does |
+|---|---|
+| `Continuous Deployment / Deploy to Production` | SSH + `docker compose pull && docker compose up -d` |
+
+**Repository secrets needed for the CD stage:**
 
 | Secret | Purpose |
 |---|---|
@@ -170,9 +189,11 @@ pass before a PR can merge.**
 | `DEPLOY_USER` | SSH username on the target server |
 | `DEPLOY_SSH_KEY` | SSH private key with access to the target server |
 
-On merge to `main`, the pipeline builds and validates the Docker image, pushes
-it to GitHub Container Registry as `ghcr.io/ukirankolla/poker:latest`, then
-SSHs to the deploy host and runs `docker compose pull && docker compose up -d`.
+On merge to `main`, CI runs the test suites, the Docker pipeline builds,
+validates, and pushes the image to GitHub Container Registry as
+`ghcr.io/ukirankolla/poker:latest`, then — once CI completes successfully —
+the CD pipeline SSHs to the deploy host and runs
+`docker compose pull && docker compose up -d`.
 
 ## Docker
 
