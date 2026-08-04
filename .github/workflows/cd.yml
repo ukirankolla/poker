@@ -2,7 +2,7 @@ name: Continuous Deployment
 
 on:
   workflow_run:
-    workflows: ["Continuous Integration"]
+    workflows: ["Code Coverage"]
     types: [completed]
     branches: [main]
 
@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   deploy:
@@ -19,6 +20,33 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Build image
+        run: docker build -t poker:prod .
+
+      - name: Validate container starts
+        run: |
+          docker run -d --name test-poker -p 8000:8000 poker:prod
+          sleep 5
+          curl -sf http://localhost:8000/ > /dev/null
+          echo "Container validated successfully" >> $GITHUB_STEP_SUMMARY
+          docker stop test-poker
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Tag and push image
+        run: |
+          docker tag poker:prod ghcr.io/${{ github.repository }}:latest
+          docker tag poker:prod ghcr.io/${{ github.repository }}:${{ github.event.workflow_run.head_sha }}
+          docker push ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ github.repository }}:${{ github.event.workflow_run.head_sha }}
+          echo "### Docker Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`ghcr.io/${{ github.repository }}:latest\`" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v1
         with:
@@ -26,13 +54,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            for attempt in $(seq 1 18); do
-              if docker pull ghcr.io/${{ github.repository }}:latest; then
-                break
-              fi
-              echo "Image not published yet, retry $attempt/18..."
-              sleep 10
-            done
+            docker pull ghcr.io/${{ github.repository }}:latest
             cd /opt/poker && docker compose pull && docker compose up -d
             docker system prune -f
             echo "Deployed $(git -C /opt/poker rev-parse --short HEAD)"

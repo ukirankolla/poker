@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  checks: write
 
 jobs:
   build-and-test:
@@ -39,23 +38,7 @@ jobs:
           python -c "import web.app"
 
       - name: Run unit tests
-        run: |
-          mkdir -p reports
-          pytest -m "not integration and not regression" \
-            --junitxml=reports/unit.xml -q
+        run: pytest -m "not integration and not regression" -q
 
       - name: Run integration tests
-        run: |
-          mkdir -p reports
-          pytest -m integration --junitxml=reports/integration.xml -q
-
-      - name: Run regression tests
-        run: |
-          mkdir -p reports
-          pytest -m regression --junitxml=reports/regression.xml -q
-
-      - uses: mikepenz/action-junit-report@v4
-        if: always()
-        with:
-          report_paths: reports/*.xml
-          check_name: "JUnit Tests"
+        run: pytest -m integration -q
