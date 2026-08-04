@@ -26,7 +26,13 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            docker pull ghcr.io/${{ github.repository }}:latest
+            for attempt in $(seq 1 18); do
+              if docker pull ghcr.io/${{ github.repository }}:latest; then
+                break
+              fi
+              echo "Image not published yet, retry $attempt/18..."
+              sleep 10
+            done
             cd /opt/poker && docker compose pull && docker compose up -d
             docker system prune -f
             echo "Deployed $(git -C /opt/poker rev-parse --short HEAD)"
