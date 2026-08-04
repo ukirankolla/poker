@@ -22,7 +22,8 @@ self-play.
 - FastAPI web UI for benchmarks, tournaments, and single-hand play
 - Benchmark, self-play, and training simulation tooling
 - GitHub Actions CI (Python 3.11/3.12)
-- Jenkins CI pipeline (build pass, unit/integration/regression tests, coverage gates)
+- Jenkins CI/CD pipeline (build, unit/integration/regression tests, coverage gates, Docker image build/push/deploy)
+- Dockerfile + docker-compose.yml for containerized deployment
 - Pytest test suite
 
 ## Setup
@@ -131,6 +132,42 @@ success:
 Required plugins: JUnit, Cobertura, HTML Publisher, Timestamper. On an
 existing Jenkins, create a Pipeline job pointing at this repository (branch
 source) and Jenkins picks up the `Jenkinsfile` automatically.
+
+### Continuous Deployment (CD)
+
+The same pipeline includes three CD stages that activate on merges to `main`:
+
+- **Docker Build** - builds a production image tagged with the build number and
+  `latest`, using the `Dockerfile` at the repo root
+- **Docker Push** - pushes the image to GitHub Container Registry
+  (`ghcr.io/ukirankolla/poker`); requires a `ghcr-token` Jenkins credential
+- **Deploy** - SSHes to the target host and runs `docker compose pull && docker compose up -d`
+
+## Docker
+
+Build and run locally:
+
+```powershell
+docker build -t ai-poker .
+docker run -p 8000:8000 ai-poker
+```
+
+Or with Docker Compose:
+
+```powershell
+docker compose up --build
+```
+
+Then open http://127.0.0.1:8000/. The image is ~120 MB (`python:3.12-slim`
+base), includes only runtime dependencies, and excludes tests and dev files
+via `.dockerignore`.
+
+To pull a pre-built image from GHCR:
+
+```powershell
+docker pull ghcr.io/ukirankolla/poker:latest
+docker run -p 8000:8000 ghcr.io/ukirankolla/poker:latest
+```
 
 ## Architecture
 
