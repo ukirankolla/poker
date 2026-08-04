@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import statistics
+import json
+import statistics as stats_module
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -37,7 +38,7 @@ class PlayerStats:
     def stddev(self) -> float:
         if len(self.net_history) < 2:
             return 0.0
-        return statistics.pstdev(self.net_history)
+        return stats_module.pstdev(self.net_history)
 
 
 @dataclass
@@ -71,6 +72,7 @@ def run_hands(
     small_blind=5,
     big_blind=10,
     seed=42,
+    statistics=None,
 ) -> BenchmarkResult:
     """Play ``hands`` hands between ``agents`` and collect statistics.
 
@@ -78,6 +80,9 @@ def run_hands(
     restarts the next hand with ``starting_chips``; each restart counts
     as a new match. Chips are zero-sum: the players' net chips sum to
     zero over the whole run.
+
+    Pass an existing ``statistics`` tracker to carry opponent profiles
+    over from a previous run.
     """
     if hands < 1:
         raise ValueError("hands must be at least 1")
@@ -91,7 +96,7 @@ def run_hands(
         for name, agent in zip(names, agents)
     ]
 
-    statistics_tracker = StatisticsTracker()
+    statistics_tracker = statistics or StatisticsTracker()
 
     game = HoldemGame(
         players,
@@ -150,9 +155,9 @@ def run_hands(
         matches=matches,
         players=list(stats.values()),
         showdown_hands=showdown_hands,
-        average_pot=statistics.fmean(pot_history),
+        average_pot=stats_module.fmean(pot_history),
         pot_stddev=(
-            statistics.pstdev(pot_history)
+            stats_module.pstdev(pot_history)
             if len(pot_history) > 1
             else 0.0
         ),
@@ -238,6 +243,7 @@ def build_agents(
     ollama_model="qwen2.5-coder:1.5b",
     ollama_timeout=15,
     equity_trials=None,
+    policy_path=None,
 ):
     agents = []
 
@@ -268,6 +274,18 @@ def build_agents(
                 if equity_trials is not None
                 else OllamaAgent(model=ollama_model, timeout=ollama_timeout)
             )
+        elif normalized == "learned":
+            if policy_path is None:
+                raise ValueError(
+                    "the learned agent requires a --policy file"
+                )
+
+            from agents.learned_agent import LearnedPolicyAgent
+            from simulation.train import Policy
+
+            agents.append(
+                LearnedPolicyAgent(Policy.load(policy_path))
+            )
         else:
             raise ValueError(f"unknown agent: {name!r}")
 
@@ -287,10 +305,15 @@ def main(argv=None):
         "--agents",
         default="random,rulebased",
         help=(
-            "comma-separated list of random, rulebased, ollama; "
+            "comma-separated list of random, rulebased, ollama, learned; "
             "ollama queries a local server and falls back to passive "
-            "play when it is unreachable"
+            "play when it is unreachable; learned needs --policy"
         ),
+    )
+    parser.add_argument(
+        "--policy",
+        default=None,
+        help="trained policy JSON used by the learned agent",
     )
     parser.add_argument(
         "--ollama-model",
@@ -317,6 +340,14 @@ def main(argv=None):
         action="store_true",
         help="print per-opponent statistics at the end of the run",
     )
+    parser.add_argument(
+        "--stats-file",
+        default=None,
+        help=(
+            "JSON file that persists per-opponent statistics across runs; "
+            "loaded before and saved after the benchmark"
+        ),
+    )
     args = parser.parse_args(argv)
 
     agents = build_agents(
@@ -325,7 +356,16 @@ def main(argv=None):
         ollama_model=args.ollama_model,
         ollama_timeout=args.ollama_timeout,
         equity_trials=args.equity_trials,
+        policy_path=args.policy,
     )
+
+    statistics = None
+
+    if args.stats_file:
+        try:
+            statistics = StatisticsTracker.load(args.stats_file)
+        except (FileNotFoundError, json.JSONDecodeError, TypeError):
+            statistics = StatisticsTracker()
 
     start = time.perf_counter()
     result = run_hands(
@@ -335,8 +375,12 @@ def main(argv=None):
         small_blind=args.small_blind,
         big_blind=args.big_blind,
         seed=args.seed,
+        statistics=statistics,
     )
     elapsed = time.perf_counter() - start
+
+    if args.stats_file:
+        result.statistics.save(args.stats_file)
 
     print_report(result, show_statistics=args.show_stats)
     print(

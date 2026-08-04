@@ -3,6 +3,7 @@ import pytest
 from agents.ollama_agent import OllamaAgent
 from agents.random_agent import RandomAgent
 from agents.rule_based_agent import RuleBasedAgent
+from poker.statistics import StatisticsTracker
 from simulation.benchmark import build_agents, print_report, run_hands
 
 
@@ -163,6 +164,31 @@ def test_run_hands_tracks_opponent_statistics():
     snapshot = result.statistics.snapshot()
     assert set(snapshot) == {"Random", "RuleBased"}
     assert all(stats.hands == 20 for stats in snapshot.values())
+
+
+def test_run_hands_carries_over_existing_statistics():
+    statistics = StatisticsTracker()
+    statistics.record("Random", "call", "preflop", 0, 20)
+    statistics.end_hand(showdown="Random")
+
+    result = run_hands(
+        [
+            RandomAgent(seed=1),
+            RuleBasedAgent(equity_trials=0),
+        ],
+        hands=10,
+        seed=3,
+        statistics=statistics,
+    )
+
+    assert result.statistics is statistics
+    snapshot = result.statistics.snapshot()
+    assert snapshot["Random"].hands > 10
+
+
+def test_build_agents_learned_requires_policy():
+    with pytest.raises(ValueError, match="--policy"):
+        build_agents(["learned", "random"])
 
 
 def test_print_report_with_statistics(capsys):
