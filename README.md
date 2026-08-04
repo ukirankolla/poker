@@ -21,8 +21,7 @@ self-play.
 - Self-play decision logging and policy training pipeline
 - FastAPI web UI for benchmarks, tournaments, and single-hand play
 - Benchmark, self-play, and training simulation tooling
-- GitHub Actions Continuous Integration + Regression + Code Coverage pipelines
-- GitHub Actions Continuous Deployment (build/push image + SSH deploy on merge to main)
+- GitHub Actions CI/CD: Continuous Integration, Regression, Code Coverage, Docker Build (PR gates) + Continuous Deployment (merge to main)
 - Jenkins CI/CD pipeline (alternative, same stages)
 - Dockerfile + docker-compose.yml for containerized deployment
 - Pytest test suite
@@ -150,32 +149,35 @@ GitHub Actions is the primary CI/CD for this repository and runs automatically
 on every pull request. The `main` branch is protected: **all required checks
 below must pass before a PR can merge.**
 
-Four pipelines keep the check labels distinct and professional:
+Four pipelines gate every pull request into `main`:
 
-**Continuous Integration** (`.github/workflows/ci.yml`) — every PR + main:
+**Continuous Integration** (`.github/workflows/ci.yml`)
 
 | Check name | What it does |
 |---|---|
 | `Continuous Integration / Build and Test` | compile + import smoke test, then unit and integration suites in one job |
 
-**Regression** (`.github/workflows/regression.yml`) — every PR + main:
+**Regression** (`.github/workflows/regression.yml`)
 
 | Check name | What it does |
 |---|---|
 | `Regression / Regression Tests` | chips-conservation invariants |
 
-**Code Coverage** (`.github/workflows/coverage.yml`) — every PR + main:
+**Code Coverage** (`.github/workflows/coverage.yml`)
 
 | Check name | What it does |
 |---|---|
 | `Code Coverage / Report` | full suite under pytest-cov (~90%), Codecov report, HTML artifact |
 
-**Continuous Deployment** (`.github/workflows/cd.yml`) — after Code Coverage
-succeeds on `main` only:
+**Docker Build** (`.github/workflows/docker.yml`)
 
 | Check name | What it does |
 |---|---|
-| `Continuous Deployment / Deploy to Production` | builds + pushes the Docker image to GHCR, then SSH + `docker compose pull && docker compose up -d` |
+| `Docker Build / Build Image` | build + validate container; push to GHCR on main |
+
+After Code Coverage succeeds on `main`, **Continuous Deployment**
+(`.github/workflows/cd.yml`) runs `Continuous Deployment / Deploy to Production`,
+which SSHs to the deploy host and runs `docker compose pull && docker compose up -d`.
 
 **Repository secrets needed for the CD stage:**
 
@@ -186,10 +188,10 @@ succeeds on `main` only:
 | `DEPLOY_SSH_KEY` | SSH private key with access to the target server |
 
 On merge to `main`, CI runs the unit and integration suites, the Regression
-pipeline checks chips-conservation invariants, and Code Coverage runs the full
-suite. Once Code Coverage completes successfully, the CD pipeline builds and
-pushes the image to GitHub Container Registry as
-`ghcr.io/ukirankolla/poker:latest`, then SSHs to the deploy host and runs
+pipeline checks chips-conservation invariants, Code Coverage runs the full
+suite, and Docker Build pushes the image to GitHub Container Registry as
+`ghcr.io/ukirankolla/poker:latest`. Once Code Coverage completes successfully,
+the CD pipeline SSHs to the deploy host and runs
 `docker compose pull && docker compose up -d`.
 
 ## Docker
