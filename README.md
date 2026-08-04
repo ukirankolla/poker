@@ -7,11 +7,13 @@ A Python Texas Hold'em project designed to experiment with local AI poker agents
 - Card and deck model
 - Five-card hand evaluation
 - Texas Hold'em seven-card evaluation
-- Player/game model
+- Player/game model with blinds, side pots, and action validation
 - Random agent
-- Rule-based agent
-- Ollama local-LLM agent
-- Tournament simulation
+- Rule-based agent with Monte Carlo equity estimation and pot-odds play
+- Ollama local-LLM agent (equity, pot odds, and opponent stats in the prompt)
+- Opponent statistics tracker (VPIP/PFR/3-bet/fold-to-3-bet/aggression)
+- Multi-table tournament engine with rising blinds and eliminations
+- Benchmark and self-play simulation tooling
 - Pytest test suite
 
 ## Setup
@@ -34,23 +36,42 @@ Run the MVP:
 python main.py
 ```
 
+## Simulations
+
+Head-to-head / multi-agent benchmark (cash-game style with rebuys):
+
+```powershell
+python -m simulation.benchmark --hands 200 --agents random,rulebased --show-stats
+```
+
+Full tournament with rising blinds, eliminations, and a final table:
+
+```powershell
+python -m simulation.tournament --players 20 --seed 42
+```
+
 ## Local AI with Ollama
 
 Install Ollama and pull a local model:
 
 ```powershell
-ollama pull qwen3.5:4b
+ollama pull qwen2.5-coder:1.5b
 ```
 
-Make sure Ollama is running, then use `OllamaAgent`.
+Make sure Ollama is running, then use `OllamaAgent`. The default model is
+`qwen2.5-coder:1.5b`; it returns structured JSON decisions quickly. Reasoning
+models (e.g. `qwen3.5*`) ignore the `think:false` override and are not
+recommended, because they burn latency on hidden reasoning and can return empty
+decisions.
 
 ## Roadmap
 
-1. Complete legal betting rounds and blinds
-2. Add action validation and pot accounting
-3. Add opponent/statistics memory
-4. Add Monte Carlo equity estimation
-5. Add stronger local LLM decision prompts
-6. Add self-play and agent evaluation
-7. Add FastAPI/game UI
-8. Add GitHub Actions CI
+- [x] Complete legal betting rounds and blinds
+- [x] Add action validation and pot accounting
+- [x] Add opponent/statistics memory
+- [x] Add Monte Carlo equity estimation
+- [x] Add stronger local LLM decision prompts
+- [x] Add self-play and agent evaluation (benchmark + tournament)
+- [ ] Add self-play data pipeline (hand/decision logging for training)
+- [ ] Add FastAPI/game UI
+- [ ] Add GitHub Actions CI

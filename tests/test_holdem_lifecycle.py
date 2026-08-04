@@ -6,6 +6,7 @@ from poker.betting import BettingEngine, BettingPlayer
 from poker.card import Card
 from poker.game import HoldemGame
 from poker.player import Player
+from poker.statistics import StatisticsTracker
 
 
 class CheckCallAgent(PokerAgent):
@@ -279,6 +280,34 @@ def test_short_all_in_creates_side_pot(monkeypatch):
     assert players[1].chips == 10  # 0 + 8 (main) + 2 (side)
     assert players[2].chips == 100  # 90 + 8 (main) + 2 (side)
     assert sum(player.chips for player in players) == 118
+
+
+def test_folded_extra_bet_does_not_destroy_chips():
+    """A player who over-commits and then folds must not vaporize the
+    unmatched slice of the pot. Folded money reverts to the main pot
+    winner(s) instead of disappearing."""
+    players = [
+        Player(
+            "A",
+            ScriptedAgent(["call", "call", "bet", "check", "fold"]),
+            chips=100,
+        ),  # button, commits 60 then folds on the river
+        Player("B", AllInAgent(), chips=50),  # small blind, all-in
+        Player("C", AllInAgent(), chips=50),  # big blind, all-in
+    ]
+
+    game = HoldemGame(players, seed=1)
+
+    total = sum(player.chips for player in players)
+    winners, _ = game.play_hand()
+
+    assert winners
+    # Contributions are A 60, B 50, C 50 = 160. A's 10-chip excess forms
+    # a top slice whose only contributor folds, so it must be awarded to
+    # the main pot winner, not destroyed.
+    assert game.pot == 160
+    assert players[0].chips == 40  # folded away the 60 it committed
+    assert sum(player.chips for player in players) == total
 
 
 def test_odd_chip_goes_to_earliest_winner(monkeypatch):
@@ -608,3 +637,21 @@ def test_random_and_rule_based_agents_play_in_game():
     assert winners
     assert sum(player.chips for player in players) == 300
     assert game.pot > 0
+
+
+def test_opponent_statistics_populate_during_game():
+    tracker = StatisticsTracker()
+
+    players = [
+        Player("A", CheckCallAgent(), chips=100),
+        Player("B", FoldAgent(), chips=100),
+    ]
+
+    game = HoldemGame(players, seed=1, statistics=tracker)
+    game.play_hand()
+
+    snapshot = tracker.snapshot()
+    assert set(snapshot) == {"A", "B"}
+    assert all(stats.hands == 1 for stats in snapshot.values())
+    assert snapshot["B"].vpip == 0.0
+    assert snapshot["B"].passive == 0
