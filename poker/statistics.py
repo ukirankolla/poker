@@ -15,9 +15,13 @@ Statistics:
 * ``aggression`` - aggressive actions (bet/raise) per passive action
   (check/call).
 * ``showdown`` - hands that went to showdown per hand played.
+
+Profiles persist to disk as JSON, so a player's history carries over
+between benchmark runs and feeds ``DecisionContext.opponent_stats``.
 """
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, fields
 
 PREFLOP_ACTIONS = {"call", "bet", "raise", "all_in"}
 
@@ -156,3 +160,34 @@ class StatisticsTracker:
                 result[name] = stats
 
         return result
+
+    # ------------------------------------------------------------------
+    # persistence
+    # ------------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            name: {
+                field.name: getattr(stats, field.name)
+                for field in fields(OpponentStats)
+            }
+            for name, stats in self._totals.items()
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        tracker = cls()
+
+        for name, values in (data or {}).items():
+            tracker._totals[name] = OpponentStats(**values)
+
+        return tracker
+
+    def save(self, path):
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.to_dict(), handle, indent=2)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, "r", encoding="utf-8") as handle:
+            return cls.from_dict(json.load(handle))
