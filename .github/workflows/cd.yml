@@ -12,27 +12,50 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   deploy:
     name: Deploy to Production
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     if: github.event.workflow_run.conclusion == 'success'
     steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            for attempt in $(seq 1 18); do
-              if docker pull ghcr.io/${{ github.repository }}:latest; then
-                break
-              fi
-              echo "Image not published yet, retry $attempt/18..."
-              sleep 10
-            done
-            cd /opt/poker && docker compose pull && docker compose up -d
-            docker system prune -f
-            echo "Deployed $(git -C /opt/poker rev-parse --short HEAD)"
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: |
+          for attempt in $(seq 1 18); do
+            if docker pull ghcr.io/${{ github.repository }}:latest; then
+              break
+            fi
+            echo "Image not published yet, retry $attempt/18..."
+            sleep 10
+          done
+
+      - name: Deploy
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker compose pull
+          docker compose up -d
+          docker system prune -f
+
+      - name: Verify
+        working-directory: ${{ github.workspace }}
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl -fsS http://localhost:8000/ >/dev/null 2>&1; then
+              echo "App is up on http://localhost:8000/"
+              exit 0
+            fi
+            echo "App not ready yet, retry $attempt/12..."
+            sleep 5
+          done
+          echo "App did not become healthy" && exit 1

@@ -176,22 +176,17 @@ Four pipelines gate every pull request into `main`:
 | `Docker Build / Build Image` | build + validate container; push to GHCR on main |
 
 After Code Coverage succeeds on `main`, **Continuous Deployment**
-(`.github/workflows/cd.yml`) runs `Continuous Deployment / Deploy to Production`,
-which SSHs to the deploy host and runs `docker compose pull && docker compose up -d`.
-
-**Repository secrets needed for the CD stage:**
-
-| Secret | Purpose |
-|---|---|
-| `DEPLOY_HOST` | Target server hostname/IP |
-| `DEPLOY_USER` | SSH username on the target server |
-| `DEPLOY_SSH_KEY` | SSH private key with access to the target server |
+(`.github/workflows/cd.yml`) runs `Continuous Deployment / Deploy to Production`
+on the repository's **self-hosted runner** (registered with the `self-hosted`,
+`Linux`, `X64` labels). It pulls
+`ghcr.io/ukirankolla/poker:latest`, then runs
+`docker compose pull && docker compose up -d` on the host where the runner runs.
 
 On merge to `main`, CI runs the unit and integration suites, the Regression
 pipeline checks chips-conservation invariants, Code Coverage runs the full
 suite, and Docker Build pushes the image to GitHub Container Registry as
 `ghcr.io/ukirankolla/poker:latest`. Once Code Coverage completes successfully,
-the CD pipeline SSHs to the deploy host and runs
+the CD pipeline deploys the image on the self-hosted runner via
 `docker compose pull && docker compose up -d`.
 
 ## Docker
