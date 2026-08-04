@@ -155,12 +155,9 @@ Four pipelines keep the check labels distinct and professional:
 
 **Continuous Integration** (`.github/workflows/ci.yml`) — every PR + main:
 
-| Stage | Check name | What it does |
-|---|---|---|
-| Build | `Continuous Integration / Build Pass` | compile + import smoke test |
-| Unit | `Continuous Integration / Unit Tests (Python 3.11/3.12)` | unit suite on both Pythons |
-| Integration | `Continuous Integration / Integration Tests` | learned agent, self-play, training |
-| Regression | `Continuous Integration / Regression Tests` | chips-conservation invariants |
+| Check name | What it does |
+|---|---|
+| `Continuous Integration / Build and Test` | compile + import smoke test, then unit, integration, and regression suites in one job |
 
 **Code Coverage** (`.github/workflows/coverage.yml`) — every PR + main:
 
