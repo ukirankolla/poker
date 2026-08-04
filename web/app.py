@@ -9,6 +9,8 @@ benchmark, a tournament, or a single hand between the agents and
 inspect the results. All endpoints are JSON so the page is optional.
 """
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -21,9 +23,12 @@ from simulation.tournament import TournamentConfig, run_tournament
 app = FastAPI(title="AI Poker", version="1.0.0")
 
 
-def _build_agents(request_agents, seed):
+def _build_agents(request_agents, seed, policy_path=None):
+    if policy_path is None:
+        default = Path("policy.json")
+        policy_path = str(default) if default.exists() else None
     try:
-        return build_agents(request_agents, seed=seed)
+        return build_agents(request_agents, seed=seed, policy_path=policy_path)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
 
@@ -33,6 +38,7 @@ class BenchmarkRequest(BaseModel):
     hands: int = Field(default=100, ge=1)
     seed: int = 42
     chips: int = Field(default=1000, ge=1)
+    policy_path: str | None = None
 
 
 class TournamentRequest(BaseModel):
@@ -43,12 +49,14 @@ class TournamentRequest(BaseModel):
     players_per_table: int = Field(default=9, ge=2)
     hands_per_level: int = Field(default=20, ge=1)
     prize_pool: int | None = None
+    policy_path: str | None = None
 
 
 class HandRequest(BaseModel):
     agents: list[str] = Field(default=["random", "rulebased"])
     seed: int = 42
     chips: int = Field(default=100, ge=1)
+    policy_path: str | None = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -58,7 +66,9 @@ def index():
 
 @app.post("/api/benchmark")
 def benchmark(request: BenchmarkRequest):
-    agents = _build_agents(request.agents, seed=request.seed)
+    agents = _build_agents(
+        request.agents, seed=request.seed, policy_path=request.policy_path
+    )
     result = run_hands(
         agents,
         hands=request.hands,
@@ -88,7 +98,9 @@ def benchmark(request: BenchmarkRequest):
 
 @app.post("/api/tournament")
 def tournament(request: TournamentRequest):
-    agents = _build_agents(request.agents, seed=request.seed)
+    agents = _build_agents(
+        request.agents, seed=request.seed, policy_path=request.policy_path
+    )
     players = [
         Player(
             f"{type(agent).__name__.replace('Agent', '')}{index}",
@@ -127,7 +139,9 @@ def tournament(request: TournamentRequest):
 
 @app.post("/api/hand")
 def hand(request: HandRequest):
-    agents = _build_agents(request.agents, seed=request.seed)
+    agents = _build_agents(
+        request.agents, seed=request.seed, policy_path=request.policy_path
+    )
     names = _player_names(agents)
     players = [
         Player(name, agent, chips=request.chips)
