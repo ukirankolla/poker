@@ -71,6 +71,20 @@ def test_rule_based_only_run_produces_categories():
     assert result.hands_played == 100
     assert result.average_pot > 0
     assert sum(result.category_counts.values()) == 100
+
+
+def test_rule_based_equity_disabled_produces_folds():
+    result = run_hands(
+        [
+            RuleBasedAgent(equity_trials=0),
+            RuleBasedAgent(equity_trials=0),
+            RuleBasedAgent(equity_trials=0),
+        ],
+        hands=100,
+        seed=5,
+    )
+
+    assert sum(result.category_counts.values()) == 100
     assert "Fold" in result.category_counts
 
 
@@ -124,3 +138,46 @@ def test_build_agents():
 
     with pytest.raises(ValueError, match="unknown agent"):
         build_agents(["bogus"], seed=1)
+
+
+def test_build_agents_forwards_equity_trials():
+    agents = build_agents(
+        ["rulebased", "ollama"], seed=1, equity_trials=0
+    )
+
+    assert agents[0].equity_trials == 0
+    assert agents[1].equity_trials == 0
+
+
+def test_run_hands_tracks_opponent_statistics():
+    result = run_hands(
+        [
+            RandomAgent(seed=1),
+            RuleBasedAgent(equity_trials=0),
+        ],
+        hands=20,
+        seed=3,
+    )
+
+    assert result.statistics is not None
+    snapshot = result.statistics.snapshot()
+    assert set(snapshot) == {"Random", "RuleBased"}
+    assert all(stats.hands == 20 for stats in snapshot.values())
+
+
+def test_print_report_with_statistics(capsys):
+    result = run_hands(
+        [
+            RandomAgent(seed=1),
+            RuleBasedAgent(equity_trials=0),
+        ],
+        hands=10,
+        seed=4,
+    )
+
+    print_report(result, show_statistics=True)
+
+    out = capsys.readouterr().out
+
+    assert "VPIP" in out
+    assert "PFR" in out

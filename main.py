@@ -14,8 +14,9 @@ def main():
     game = HoldemGame(players, seed=7)
     game.play_hand(verbose=True)
     print("\n=== Tournament ===")
-    for name, wins in run_tournament(players, hands=100).most_common():
-        print(f"{name}: {wins:.1f} wins")
+    result = run_tournament(players)
+    print(f"Champion: {result.winner.name}")
+    print(f"Hands played: {result.hands_played}")
 
 if __name__ == "__main__":
     main()

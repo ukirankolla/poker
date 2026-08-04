@@ -23,7 +23,15 @@ class HoldemGame:
     side pots that only the larger contributors can win.
     """
 
-    def __init__(self, players, seed=None, small_blind=5, big_blind=10):
+    def __init__(
+        self,
+        players,
+        seed=None,
+        small_blind=5,
+        big_blind=10,
+        statistics=None,
+        on_decision=None,
+    ):
         if len(players) < 2:
             raise ValueError("at least two players are required")
 
@@ -31,6 +39,8 @@ class HoldemGame:
         self.seed = seed
         self.small_blind = small_blind
         self.big_blind = big_blind
+        self._statistics = statistics
+        self._on_decision = on_decision
 
         self.deck = None
         self.community = []
@@ -170,6 +180,12 @@ class HoldemGame:
     def _build_context(self, player, betting_player, actions):
         index = self._betting_index(betting_player)
 
+        opponent_stats = {}
+        if self._statistics is not None:
+            opponent_stats = self._statistics.snapshot(
+                exclude=player.name
+            )
+
         return DecisionContext(
             hole_cards=tuple(player.hole_cards),
             community_cards=tuple(self.community),
@@ -183,6 +199,7 @@ class HoldemGame:
                 1 for bp in self._betting_players if not bp.folded
             ),
             allowed_actions=actions,
+            opponent_stats=opponent_stats,
         )
 
     def _apply_action(self, betting_round, betting_player, action):
@@ -218,6 +235,8 @@ class HoldemGame:
             self._engine, self._betting_players, start_index
         )
 
+        raises_before = 0
+
         while True:
             betting_player = betting_round.current_player()
 
@@ -227,6 +246,7 @@ class HoldemGame:
             index = self._betting_index(betting_player)
             player = self.players[index]
             actions = self._legal_actions(betting_player)
+            to_call_before = self._engine.state.to_call(betting_player)
             context = self._build_context(player, betting_player, actions)
 
             action = player.agent.decide(context)
@@ -241,6 +261,20 @@ class HoldemGame:
                 betting_round, betting_player, action
             )
 
+            if action in ("bet", "raise"):
+                raises_before += 1
+
+            if self._statistics is not None:
+                self._statistics.record(
+                    player.name,
+                    action,
+                    street,
+                    raises_before - 1
+                    if action in ("bet", "raise")
+                    else raises_before,
+                    to_call_before,
+                )
+
             self.action_history.append(
                 {
                     "street": street,
@@ -249,6 +283,11 @@ class HoldemGame:
                     "amount": amount,
                 }
             )
+
+            if self._on_decision is not None:
+                self._on_decision(
+                    player.name, street, context, action, amount
+                )
 
             self._sync_to_players()
 
@@ -289,9 +328,15 @@ class HoldemGame:
     def _showdown(self, verbose=False):
         main_winners = None
         best = None
+        main_winners_pairs = []
+        skipped = 0
 
         for amount, eligible in self._engine.state.compute_pots():
             if not eligible:
+                # Every contributor to this slice folded, so nobody can
+                # claim it. Folded money stays in the pot and goes to
+                # the main pot winner(s) instead of disappearing.
+                skipped += amount
                 continue
 
             results = []
@@ -313,7 +358,11 @@ class HoldemGame:
 
             if main_winners is None:
                 main_winners = [player for player, _ in winners]
+                main_winners_pairs = winners
                 best = slice_best
+
+        if skipped and main_winners_pairs:
+            self._award_slice(skipped, main_winners_pairs)
 
         if main_winners is None:
             # No money was committed to the pot (every player was busted
@@ -335,6 +384,13 @@ class HoldemGame:
 
         self.pot = self._engine.state.pot
 
+        if self._statistics is not None:
+            self._statistics.end_hand(
+                True,
+                {player.name for player in self.players if not player.folded},
+                {player.name for player in self.players},
+            )
+
         if verbose:
             self._print_summary(main_winners, best=best)
 
@@ -345,6 +401,12 @@ class HoldemGame:
         player = self.players[index]
 
         self._award_pot([(player, betting_player)])
+
+        if self._statistics is not None:
+            self._statistics.end_hand(
+                False,
+                roster={player.name for player in self.players},
+            )
 
         if verbose:
             self._print_summary([player], best=None)

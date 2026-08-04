@@ -12,6 +12,7 @@ from agents.rule_based_agent import RuleBasedAgent
 from poker.evaluator import hand_name
 from poker.game import HoldemGame
 from poker.player import Player
+from poker.statistics import StatisticsTracker
 
 
 @dataclass
@@ -48,6 +49,7 @@ class BenchmarkResult:
     average_pot: float
     pot_stddev: float
     category_counts: Counter
+    statistics: StatisticsTracker | None = None
 
 
 def _player_names(agents) -> list[str]:
@@ -89,11 +91,14 @@ def run_hands(
         for name, agent in zip(names, agents)
     ]
 
+    statistics_tracker = StatisticsTracker()
+
     game = HoldemGame(
         players,
         seed=seed,
         small_blind=small_blind,
         big_blind=big_blind,
+        statistics=statistics_tracker,
     )
 
     stats = {player.name: PlayerStats(player.name) for player in players}
@@ -152,10 +157,39 @@ def run_hands(
             else 0.0
         ),
         category_counts=category_counts,
+        statistics=statistics_tracker,
     )
 
 
-def print_report(result: BenchmarkResult) -> None:
+def _print_opponent_stats(result: BenchmarkResult) -> None:
+    if result.statistics is None:
+        return
+
+    names = [player.name for player in result.players]
+    snapshot = result.statistics.snapshot()
+
+    header = (
+        f"{'Player':<12}{'Hands':>7}{'VPIP':>8}{'PFR':>8}"
+        f"{'3Bet':>8}{'F3Bet':>8}{'Agg':>7}{'SD%':>7}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    for name in names:
+        stats = snapshot.get(name)
+
+        if stats is None or stats.hands == 0:
+            continue
+
+        print(
+            f"{name:<12}{stats.hands:>7,}{stats.vpip:>8.1%}"
+            f"{stats.pfr:>8.1%}{stats.three_bet:>8.1%}"
+            f"{stats.fold_to_three_bet:>8.1%}{stats.aggression:>7.2f}"
+            f"{stats.showdown:>7.1%}"
+        )
+
+
+def print_report(result: BenchmarkResult, show_statistics=False) -> None:
     hands = result.hands_played
     fold_hands = hands - result.showdown_hands
 
@@ -193,9 +227,17 @@ def print_report(result: BenchmarkResult) -> None:
         for name, count in result.category_counts.most_common():
             print(f"  {name:<20}{count:>8,}  {count / hands:>6.1%}")
 
+    if show_statistics:
+        print("\nOpponent statistics (hands with data):")
+        _print_opponent_stats(result)
+
 
 def build_agents(
-    names, seed=None, ollama_model="qwen2.5-coder:1.5b", ollama_timeout=15
+    names,
+    seed=None,
+    ollama_model="qwen2.5-coder:1.5b",
+    ollama_timeout=15,
+    equity_trials=None,
 ):
     agents = []
 
@@ -209,9 +251,23 @@ def build_agents(
                 )
             )
         elif normalized == "rulebased":
-            agents.append(RuleBasedAgent())
+            agents.append(
+                RuleBasedAgent(
+                    equity_trials=equity_trials,
+                )
+                if equity_trials is not None
+                else RuleBasedAgent()
+            )
         elif normalized == "ollama":
-            agents.append(OllamaAgent(model=ollama_model, timeout=ollama_timeout))
+            agents.append(
+                OllamaAgent(
+                    model=ollama_model,
+                    timeout=ollama_timeout,
+                    equity_trials=equity_trials,
+                )
+                if equity_trials is not None
+                else OllamaAgent(model=ollama_model, timeout=ollama_timeout)
+            )
         else:
             raise ValueError(f"unknown agent: {name!r}")
 
@@ -247,6 +303,20 @@ def main(argv=None):
         default=15,
         help="per-request timeout in seconds for the ollama agent",
     )
+    parser.add_argument(
+        "--equity-trials",
+        type=int,
+        default=None,
+        help=(
+            "Monte Carlo equity trials for rulebased/ollama agents "
+            "(default: agent defaults; 0 disables equity estimation)"
+        ),
+    )
+    parser.add_argument(
+        "--show-stats",
+        action="store_true",
+        help="print per-opponent statistics at the end of the run",
+    )
     args = parser.parse_args(argv)
 
     agents = build_agents(
@@ -254,6 +324,7 @@ def main(argv=None):
         seed=args.seed,
         ollama_model=args.ollama_model,
         ollama_timeout=args.ollama_timeout,
+        equity_trials=args.equity_trials,
     )
 
     start = time.perf_counter()
@@ -267,7 +338,7 @@ def main(argv=None):
     )
     elapsed = time.perf_counter() - start
 
-    print_report(result)
+    print_report(result, show_statistics=args.show_stats)
     print(
         f"\nCompleted {result.hands_played:,} hands in {elapsed:.2f}s "
         f"({result.hands_played / elapsed:,.0f} hands/s)"

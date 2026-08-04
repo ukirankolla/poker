@@ -16,6 +16,7 @@ class DecisionContext:
     allowed_actions: tuple = field(
         default_factory=lambda: ("fold", "check", "call", "raise", "all_in")
     )
+    opponent_stats: dict = field(default_factory=dict)
 
 
 class PokerAgent(ABC):
