@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from agents.ollama_agent import OllamaAgent
@@ -77,16 +75,15 @@ def test_rule_based_only_run_produces_categories():
 
 
 def test_ollama_agent_plays_in_benchmark(monkeypatch):
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"response": json.dumps({"action": "call"})}
-
     monkeypatch.setattr(
-        "agents.ollama_agent.requests.post",
-        lambda *args, **kwargs: FakeResponse(),
+        "agents.ollama_agent.OllamaAgent._probe",
+        lambda self: True,
+    )
+    monkeypatch.setattr(
+        "agents.ollama_agent.OllamaAgent._query",
+        lambda self, context, allowed: (
+            "call" if "call" in allowed else allowed[0]
+        ),
     )
 
     result = run_hands(

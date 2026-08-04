@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from agents.base_agent import PokerAgent
@@ -406,16 +404,15 @@ def test_raise_war_preflop():
 
 
 def test_ollama_agent_plays_in_game(monkeypatch):
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"response": json.dumps({"action": "call"})}
-
     monkeypatch.setattr(
-        "agents.ollama_agent.requests.post",
-        lambda *args, **kwargs: FakeResponse(),
+        "agents.ollama_agent.OllamaAgent._probe",
+        lambda self: True,
+    )
+    monkeypatch.setattr(
+        "agents.ollama_agent.OllamaAgent._query",
+        lambda self, context, allowed: (
+            "check" if "check" in allowed else "call"
+        ),
     )
 
     players = [
