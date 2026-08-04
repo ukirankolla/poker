@@ -1,6 +1,7 @@
 services:
   poker:
     build: .
+    image: ghcr.io/ukirankolla/poker:latest
     container_name: ai-poker
     ports:
       - "8000:8000"
