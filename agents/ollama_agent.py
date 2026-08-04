@@ -113,7 +113,19 @@ class OllamaAgent(PokerAgent):
     def _game_state(self, context, allowed_actions):
         to_call = max(0, context.current_bet - context.player_bet)
 
+        community = len(context.community_cards)
+        street = (
+            "preflop"
+            if community == 0
+            else "flop"
+            if community == 3
+            else "turn"
+            if community == 4
+            else "river"
+        )
+
         state = {
+            "street": street,
             "position": context.position,
             "hole_cards": [str(card) for card in context.hole_cards],
             "community_cards": [
@@ -159,12 +171,33 @@ class OllamaAgent(PokerAgent):
                 "role": "system",
                 "content": (
                     "You are a Texas Hold'em poker decision engine. "
-                    "Choose exactly one action from allowed_actions. "
-                    "Return JSON only in this format: "
-                    '{"action":"<action>","amount":<chips if raising>}. '
-                    "Use estimated_equity and pot_odds to decide: "
-                    "call when equity beats pot odds, fold when it "
-                    "does not, and raise with strong hands."
+                    "Choose exactly one action from allowed_actions and "
+                    "return JSON only: "
+                    '{"action":"<action>","amount":<chips if raising>}.\n\n'
+                    "Decision rules:\n"
+                    "1. Pot odds: call only when estimated_equity clearly "
+                    "exceeds pot_odds (pot_odds is the fraction of the pot "
+                    "you must pay). Fold when equity does not cover the "
+                    "price.\n"
+                    "2. Raise or bet only with a strong hand: "
+                    "estimated_equity above 0.65, or a made hand on a "
+                    "later street. Prefer the smallest legal raise.\n"
+                    "3. Check whenever it is free and you have no clear "
+                    "value hand.\n"
+                    "4. Position: play tighter out of position (small "
+                    "blind, big blind) and loosest on the button, which "
+                    "acts last.\n"
+                    "5. short stack (stack near to_call or below ~10x the "
+                    "big blind): all_in with strong hands, fold weak "
+                    "ones.\n"
+                    "6. Opponents: raise more against loose players (high "
+                    "vpip), fold more against aggressive players (high "
+                    "aggression or three_bet).\n"
+                    "7. Do not slow-play a strong hand; raise for value. "
+                    "Do not bluff into multiple opponents without a strong "
+                    "equity edge.\n"
+                    "8. On later streets, prefer check/call with marginal "
+                    "hands and only bet the river with real value."
                 ),
             },
             {
