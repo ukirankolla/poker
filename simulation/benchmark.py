@@ -194,7 +194,9 @@ def print_report(result: BenchmarkResult) -> None:
             print(f"  {name:<20}{count:>8,}  {count / hands:>6.1%}")
 
 
-def build_agents(names, seed=None):
+def build_agents(
+    names, seed=None, ollama_model="qwen2.5-coder:1.5b", ollama_timeout=15
+):
     agents = []
 
     for index, name in enumerate(names):
@@ -209,7 +211,7 @@ def build_agents(names, seed=None):
         elif normalized == "rulebased":
             agents.append(RuleBasedAgent())
         elif normalized == "ollama":
-            agents.append(OllamaAgent())
+            agents.append(OllamaAgent(model=ollama_model, timeout=ollama_timeout))
         else:
             raise ValueError(f"unknown agent: {name!r}")
 
@@ -230,13 +232,29 @@ def main(argv=None):
         default="random,rulebased",
         help=(
             "comma-separated list of random, rulebased, ollama; "
-            "ollama requires a running Ollama server, otherwise every "
-            "decision waits on its HTTP timeout and the run stalls"
+            "ollama queries a local server and falls back to passive "
+            "play when it is unreachable"
         ),
+    )
+    parser.add_argument(
+        "--ollama-model",
+        default="qwen2.5-coder:1.5b",
+        help="Ollama model used by the ollama agent",
+    )
+    parser.add_argument(
+        "--ollama-timeout",
+        type=int,
+        default=15,
+        help="per-request timeout in seconds for the ollama agent",
     )
     args = parser.parse_args(argv)
 
-    agents = build_agents(args.agents.split(","), seed=args.seed)
+    agents = build_agents(
+        args.agents.split(","),
+        seed=args.seed,
+        ollama_model=args.ollama_model,
+        ollama_timeout=args.ollama_timeout,
+    )
 
     start = time.perf_counter()
     result = run_hands(
