@@ -12,12 +12,10 @@ concurrency:
 
 permissions:
   contents: read
-  checks: write
 
 jobs:
-  # ── Stage 1: build verification ──────────────────────────────────────
-  build:
-    name: Build Pass
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +25,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
       - name: Compile all modules
         run: python -m compileall -q poker agents simulation web tests
@@ -40,84 +37,8 @@ jobs:
           python -c "import simulation.benchmark, simulation.tournament, simulation.self_play, simulation.train"
           python -c "import web.app"
 
-  # ── Stage 2: unit tests (matrix) ─────────────────────────────────────
-  unit-tests:
-    name: "Unit Tests (Python ${{ matrix.python-version }})"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-
-      - run: pip install -r requirements.txt
-
       - name: Run unit tests
-        run: |
-          mkdir -p reports
-          pytest -m "not integration and not regression" \
-            --junitxml=reports/unit.xml -q
-
-      - uses: mikepenz/action-junit-report@v4
-        if: always()
-        with:
-          report_paths: reports/unit.xml
-          check_name: "JUnit Unit Tests (Python ${{ matrix.python-version }})"
-
-  # ── Stage 2: integration tests ───────────────────────────────────────
-  integration-tests:
-    name: Integration Tests
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - run: pip install -r requirements.txt
+        run: pytest -m "not integration and not regression" -q
 
       - name: Run integration tests
-        run: |
-          mkdir -p reports
-          pytest -m integration --junitxml=reports/integration.xml -q
-
-      - uses: mikepenz/action-junit-report@v4
-        if: always()
-        with:
-          report_paths: reports/integration.xml
-          check_name: "JUnit Integration Tests"
-
-  # ── Stage 2: regression tests ────────────────────────────────────────
-  regression-tests:
-    name: Regression Tests
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - run: pip install -r requirements.txt
-
-      - name: Run regression tests
-        run: |
-          mkdir -p reports
-          pytest -m regression --junitxml=reports/regression.xml -q
-
-      - uses: mikepenz/action-junit-report@v4
-        if: always()
-        with:
-          report_paths: reports/regression.xml
-          check_name: "JUnit Regression Tests"
+        run: pytest -m integration -q
